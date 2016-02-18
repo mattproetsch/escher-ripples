@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js canvas - particles - waves</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background-color: #404040;
+				margin: 0px;
+				overflow: hidden;
+			}
+
+			a {
+				color:#0078ff;
+			}
+		</style>
+	</head>
+	<body>
+		<script src="js/three.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+		
+		
+		<!-- Shaders -->
+		<!-- Vert -->
+		<script id="vertexShader" type="x-shader/x-vertex">
+			varying vec2 vUv;
+			varying vec3 pos;
+			varying vec3 vNormal;
+			
+			uniform vec2 waveCenters[NUM_WAVES];
+			uniform float waveStartTimes[NUM_WAVES];
+			uniform float waveMasks[NUM_WAVES];
+			uniform float t;
+			
+			void main() {
+				vUv = uv;
+				
+				float z;
+				
+				for (int i = 0; i < NUM_WAVES; i++) {
+					float d = length(position.xy - waveCenters[i]);
+					float waveTime = t - waveStartTimes[i];
+					z += waveMasks[i] * 0.05 * sin(32.0 * max(0.0, (waveTime * 2.09) - (d / 0.2)));
+				}
+				
+				pos = vec3(position.xy, z);
+				vNormal = normalMatrix * normal;
+				gl_Position = projectionMatrix *
+								modelViewMatrix *
+								vec4(pos, 1.0);
+			}
+		</script>
+		
+		<!-- Frag -->
+		<script id="fragmentShader" type="x-shader/x-fragment">
+			varying vec2 vUv;
+			varying vec3 pos;
+			varying vec3 vNormal;
+			
+			uniform sampler2D texture1;
+			uniform vec3 dirLightDirection;
+			uniform vec3 dirLightColor;
+			
+			void main() {
+				//vec3 lightDirection = normalize(-dirLightDirection);
+				//vec3 lightColor = dot(lightDirection, vNormal) * dirLightColor;
+				gl_FragColor = vec4(dirLightColor, 0.0) * texture2D(texture1, vUv);
+			}
+		</script>
+		
+		
+		
+		<script>
+			var container, stats;
+			var camera, scene, renderer;
+			var quad, light, material, texture;
+			
+			var texCoordVertices = [];
+
+			var mouseX = 0, mouseY = 0;
+			var windowHalfX = window.innerWidth / 2;
+			var windowHalfY = window.innerHeight / 2;
+		
+			var QUAD_LOWER_LEFT = new THREE.Vector3(-1, -1, 0);
+			var QUAD_UPPER_RIGHT = new THREE.Vector3(1, 1, 0);
+			var TEX_LOWER_LEFT = new THREE.Vector2(0, 0);
+			var TEX_UPPER_RIGHT = new THREE.Vector2(1, 1);
+			var ROWS = 100;
+			var COLS = 100;
+			
+			// Uniforms
+			var waveCenters = [];
+			var waveStartTimes = [];
+			var waveMasks = [];
+			var activeWaves = 0;
+			var NUM_WAVES = 12;
+			var WAVE_TTL = 1;  // seconds
+			
+			// load texture and init geom
+			texture = new THREE.TextureLoader().load(
+				"textures/box_tex.png",
+				function(tex) {
+					console.log("Texture successfully loaded!");
+					init(tex);
+				}
+			);
+			
+			
+
+			function init(tex) {
+			
+				// define quad geom
+				quad = new THREE.Geometry();
+				generateTexturedPlaneGeometry(quad);
+				quad.computeFaceNormals();
+				
+				// set up uniform arrays
+				
+				for (let i = 0; i < NUM_WAVES; i++) {
+					waveCenters[i] = new THREE.Vector2(0, 0);
+					waveStartTimes[i] = 0.0;
+					waveMasks[i] = 0.0;
+				}
+			
+				material = new THREE.ShaderMaterial({
+					uniforms: {
+						// 
+						resolution: { type: "2f", value: new THREE.Vector2() },
+						texture1: { type: "t", value: tex },
+						
+						// declare a vector of Vector2s, a vector of floats, and a time
+						waveCenters: { type: "v2v", value: waveCenters },
+						waveStartTimes: { type: "1fv", value: waveStartTimes },
+						waveMasks: { type: "1fv", value: waveMasks },
+						t: { type: "f", value: 0.0 },
+						
+						dirLightDirection: { type: "v3", value: new THREE.Vector3(1.0, 1.0, -1.0).normalize() },
+						dirLightColor: { type: "v3", value: new THREE.Vector3(0.5, 0.5, 0.5) }
+					},
+					
+					vertexShader: 
+						"#define NUM_WAVES " + NUM_WAVES + "\n" + 
+						document.getElementById("vertexShader").innerHTML,
+						
+					fragmentShader: document.getElementById("fragmentShader").innerHTML,
+					
+				});
+
+				var quadMesh = new THREE.Mesh(quad, material);
+				
+				light = new THREE.PointLight(0xFFFFFF);
+				light.position.set(0, 0, 1);
+				
+				
+				container = document.createElement('div');
+				document.body.appendChild(container);
+
+				camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+				camera.position.z = 2.303;
+				camera.lookAt(new THREE.Vector3(0, 0, 0));
+
+				scene = new THREE.Scene();
+				scene.add(quadMesh);
+				scene.add(light);
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setPixelRatio(window.devicePixelRatio);
+				renderer.setSize(window.innerWidth, window.innerHeight);
+				container.appendChild(renderer.domElement);
+
+				stats = new Stats();
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.top = '0px';
+				container.appendChild(stats.domElement);
+
+				document.addEventListener('click', onDocumentClick, false);
+				document.addEventListener('mousemove', onDocumentMouseMove, false);
+				document.addEventListener('touchstart', onDocumentTouchStart, false);
+				document.addEventListener('touchmove', onDocumentTouchMove, false);
+
+				//
+
+				window.addEventListener('resize', onWindowResize, false);
+
+				animate();
+			}
+
+			function onWindowResize() {
+
+				windowHalfX = window.innerWidth / 2;
+				windowHalfY = window.innerHeight / 2;
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize(window.innerWidth, window.innerHeight);
+			}
+
+			function onDocumentMouseMove(event) {
+
+				mouseX = event.clientX - windowHalfX;
+				mouseY = event.clientY - windowHalfY;
+
+			}
+			
+			function onDocumentClick(event) {
+				
+				let clientX = event.clientX;
+				let clientY = event.clientY;
+				
+				console.log("clicked (" + clientX + ", " + clientY + ")");
+				
+				var vector = new THREE.Vector3();
+
+				vector.set(
+					( clientX / window.innerWidth ) * 2 - 1,
+					- ( clientY / window.innerHeight ) * 2 + 1,
+					0.5 );
+				
+				
+
+				vector.unproject( camera );
+
+				var dir = vector.sub( camera.position ).normalize();
+
+				var distance = - camera.position.z / dir.z;
+
+				var pos = camera.position.clone().add( dir.multiplyScalar( distance ) );
+				
+				if (pos.x < -1 || pos.y < -1 || pos.x > 1 || pos.y > 1)
+					return;
+				
+				
+				addWave(new THREE.Vector2(pos.x, pos.y));
+			}
+
+			function onDocumentTouchStart(event) {
+
+				if (event.touches.length === 1) {
+
+					event.preventDefault();
+
+					mouseX = event.touches[0].pageX - windowHalfX;
+					mouseY = event.touches[0].pageY - windowHalfY;
+
+				}
+
+			}
+
+			function onDocumentTouchMove(event) {
+
+				if (event.touches.length === 1) {
+
+					event.preventDefault();
+
+					mouseX = event.touches[0].pageX - windowHalfX;
+					mouseY = event.touches[0].pageY - windowHalfY;
+
+				}
+
+			}
+
+			function animate() {
+
+				requestAnimationFrame(animate);
+
+				render();
+				stats.update();
+
+			}
+
+			function render() {
+
+				//camera.position.x += ( mouseX * 0.05 - camera.position.x ) * .05;
+				//camera.position.y += ( - mouseY * 0.05 - camera.position.y ) * .05;
+				//camera.lookAt( scene.position );
+
+				//material.uniforms.waveTime.value = Date.now() / 1000000;
+				
+				let t = Date.now() / 1000 % 5000;
+				
+				// prune old waves
+				for (let i = 0; i < NUM_WAVES; i++) {
+					if (waveMasks[i] > 0 && t > waveStartTimes[i] + WAVE_TTL) {
+						waveMasks[i] = 0.0;
+						waveCenters[i].set(0, 0, 0);
+						waveStartTimes[i] = 0.0;
+					}
+				}
+				
+				material.uniforms.t.value = t;
+				renderer.render(scene, camera);
+				
+			}
+			
+			function generateTexturedPlaneGeometry(quad) {
+				let horizSpacing = 1 / (ROWS - 1);
+				let vertSpacing = 1 / (COLS - 1);
+				
+				let geomSpacingX = horizSpacing * (QUAD_UPPER_RIGHT.x - QUAD_LOWER_LEFT.x);
+				let geomSpacingY = vertSpacing * (QUAD_UPPER_RIGHT.y - QUAD_LOWER_LEFT.y);
+				let texSpacingX = horizSpacing * (TEX_UPPER_RIGHT.x - TEX_LOWER_LEFT.x);
+				let texSpacingY = vertSpacing * (TEX_UPPER_RIGHT.y - TEX_LOWER_LEFT.y);
+				
+				let geomColSpacer = new THREE.Vector3(geomSpacingX, 0, 0);
+				let geomRowSpacer = new THREE.Vector3(0, geomSpacingY, 0);
+				let texColSpacer = new THREE.Vector3(texSpacingX, 0, 0);
+				let texRowSpacer = new THREE.Vector3(0, texSpacingY, 0);
+				
+				
+				
+				// Construct quad vertices and faces + quad faceVertexUvs
+				quad.faceVertexUvs[0] = [];
+				
+				// Generate first row of vertices
+				//console.log("Generating first row of vertices...");
+				for (let col = 0; col < COLS; col++) {
+					let geomPosn = new THREE.Vector3().copy(QUAD_LOWER_LEFT);
+					let texPosn = new THREE.Vector3().copy(TEX_LOWER_LEFT);
+						
+					geomPosn.addScaledVector(geomColSpacer, col);
+					texPosn.addScaledVector(texColSpacer, col);
+						
+					quad.vertices.push(geomPosn);
+					texCoordVertices.push(texPosn);
+				}
+				
+				// Generate first column of vertices
+				//console.log("Generating first column of vertices...");
+				for (let row = 1; row < ROWS; row++) {
+				
+					// We need to set at a specific index
+					let idx = row * COLS;
+					let geomPosn = new THREE.Vector3().copy(QUAD_LOWER_LEFT);
+					let texPosn = new THREE.Vector3().copy(TEX_LOWER_LEFT);
+						
+					geomPosn.addScaledVector(geomRowSpacer, row);
+					texPosn.addScaledVector(texRowSpacer, row);
+						
+					quad.vertices[idx] = geomPosn;
+					texCoordVertices[idx] = texPosn;
+				}
+				
+				// Inductively generate all faces of the mesh using:
+				//
+				//  [row][col-1] -------- [row][col] <----- Current vertex
+				//       |      -              |
+				//       |        -  		   |
+				//		 |		    -		   |
+				//		 |			  -		   |
+				//		 |				-	   |
+				//  [row-1][col-1] ------ [row-1][col]
+				//
+				//console.log("Generating plane interior...");
+				for (let row = 1; row < ROWS; row++) {
+					for (let col = 1; col < COLS; col++) {
+					
+						let geomPosn = new THREE.Vector3().copy(QUAD_LOWER_LEFT);
+						let texPosn = new THREE.Vector3().copy(TEX_LOWER_LEFT);
+						
+						let idx = row * COLS + col;
+						let face1Idx = (2 * (row - 1) * (COLS - 1)) + (2 * (col - 1));
+						let lastRowIdx = (row - 1) * COLS + col;
+						let lastColIdx = row * COLS + col - 1;
+						let lastRowColIdx = (row - 1) * COLS + col - 1;
+						
+						//console.log ("idx=" + idx + ", face1idx=" + face1Idx + ", lastRowIdx=" + lastRowIdx + ", lastColIdx=" + lastColIdx + ", lastRowColIdx=" + lastRowColIdx);
+						
+						geomPosn.addScaledVector(geomRowSpacer, row).addScaledVector(geomColSpacer, col);
+						texPosn.addScaledVector(texRowSpacer, row).addScaledVector(texColSpacer, col);
+						
+						//console.log("geomPosn = (" + geomPosn.x + ", " + geomPosn.y + ", " + geomPosn.z + ")");
+						//console.log("texPosn = (" + texPosn.x + ", " + texPosn.y + ")");
+						
+						// Set vertices by index, since push() will append to the last entry -
+						// which was a column, which we set manually past the end of the array
+						quad.vertices[idx] = geomPosn;
+						texCoordVertices[idx] = texPosn;
+						
+						let curTex = texCoordVertices[idx];
+						let lastRowTex = texCoordVertices[lastRowIdx];
+						let lastColTex = texCoordVertices[lastColIdx];
+						let lastRowColTex = texCoordVertices[lastRowColIdx];
+						
+						// Add faces
+						quad.faces.push(
+							new THREE.Face3(lastRowColIdx, lastRowIdx, lastColIdx),  // BL, BR, TL
+							new THREE.Face3(lastRowIdx, idx, lastColIdx)			 // BR, TR (cur), TL
+						);
+						
+						quad.faceVertexUvs[0][face1Idx] = [
+							lastRowColTex,  // BL
+							lastRowTex,		// BR
+							lastColTex		// TL
+						];
+						quad.faceVertexUvs[0][face1Idx + 1] = [
+							lastRowTex,		// BR
+							curTex,		// TR (cur)
+							lastColTex		// TL
+						];
+						
+					}
+				}
+				
+				// Signal updates necessary
+				quad.verticesNeedUpdate = true;
+				quad.elementsNeedUpdate = true;
+				quad.uvsNeedUpdate = true;
+			}
+
+			function addWave(center) {
+			
+				waveCenters[activeWaves] = center;
+				waveStartTimes[activeWaves] = Date.now() / 1000 % 5000;
+				waveMasks[activeWaves] = 1.0;
+				activeWaves++;
+				
+				activeWaves = activeWaves % NUM_WAVES;
+			}
+		</script>
+	</body>
+</html>
