@@ -6,17 +6,32 @@
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<style>
 			body {
-				background-color: #404040;
-				margin: 0px;
-				overflow: hidden;
+				margin: 0;
+				padding: 0;
+				height: 100%;
 			}
-
-			a {
-				color:#0078ff;
+			
+			#der-canvas {
+				height: 50%;
+				width: 100%;
+				background: #5d5d5d;
+				margin: auto;
+				text-align: center;
+			}
+			
+			#escher {
+				height: 50%;
+				width: 100%;
+				background: #000000;
+				margin: auto;
+				text-align: center;
 			}
 		</style>
 	</head>
 	<body>
+		<div style="height: 50%;background:#5d5d5d;" id="der-canvas"></div>
+		<div style="height: 50%;background:#ffffff;" id="escher"><img src="LW367-MC-Escher-Rippled-Surface-1950.jpg"></div>
+		
 		<script src="js/three.js"></script>
 		<script src="js/libs/stats.min.js"></script>
 		
@@ -86,8 +101,8 @@
 			var QUAD_UPPER_RIGHT = new THREE.Vector3(1, 1, 0);
 			var TEX_LOWER_LEFT = new THREE.Vector2(0, 0);
 			var TEX_UPPER_RIGHT = new THREE.Vector2(1, 1);
-			var ROWS = 100;
-			var COLS = 100;
+			var ROWS = 200;
+			var COLS = 200;
 			
 			// Uniforms
 			var waveCenters = [];
@@ -136,7 +151,7 @@
 						t: { type: "f", value: 0.0 },
 						
 						dirLightDirection: { type: "v3", value: new THREE.Vector3(1.0, 1.0, -1.0).normalize() },
-						dirLightColor: { type: "v3", value: new THREE.Vector3(0.5, 0.5, 0.5) }
+						dirLightColor: { type: "v3", value: new THREE.Vector3(1.0, 1.0, 1.0) }
 					},
 					
 					vertexShader: 
@@ -149,24 +164,19 @@
 
 				var quadMesh = new THREE.Mesh(quad, material);
 				
-				light = new THREE.PointLight(0xFFFFFF);
-				light.position.set(0, 0, 1);
 				
-				
-				container = document.createElement('div');
-				document.body.appendChild(container);
+				container = document.getElementById("der-canvas");
 
 				camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-				camera.position.z = 2.303;
+				camera.position.z = 1.303;
 				camera.lookAt(new THREE.Vector3(0, 0, 0));
 
 				scene = new THREE.Scene();
 				scene.add(quadMesh);
-				scene.add(light);
 
 				renderer = new THREE.WebGLRenderer();
 				renderer.setPixelRatio(window.devicePixelRatio);
-				renderer.setSize(window.innerWidth, window.innerHeight);
+				renderer.setSize(498, 414);
 				container.appendChild(renderer.domElement);
 
 				stats = new Stats();
@@ -181,7 +191,7 @@
 
 				//
 
-				window.addEventListener('resize', onWindowResize, false);
+				//window.addEventListener('resize', onWindowResize, false);
 
 				animate();
 			}
@@ -209,17 +219,16 @@
 				let clientX = event.clientX;
 				let clientY = event.clientY;
 				
-				console.log("clicked (" + clientX + ", " + clientY + ")");
+				let rect = renderer.domElement.getBoundingClientRect();
+				
 				
 				var vector = new THREE.Vector3();
-
-				vector.set(
-					( clientX / window.innerWidth ) * 2 - 1,
-					- ( clientY / window.innerHeight ) * 2 + 1,
-					0.5 );
-				
-				
-
+				vector.set((clientX - rect.left) / rect.width * 2 - 1, -((clientY - rect.top) / rect.height * 2 - 1), 0.5);
+				//vector.set(
+				//	( clientX / window.innerWidth ) * 2 - 1,
+				//	- ( clientY / window.innerHeight ) * 2 + 1,
+				//	0.5 );
+				console.log("click (" + vector.x + ", " + vector.y + ", " + vector.z + ")");
 				vector.unproject( camera );
 
 				var dir = vector.sub( camera.position ).normalize();
